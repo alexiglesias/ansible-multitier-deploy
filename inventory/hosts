@@ -1,0 +1,12 @@
+[websrvgrp]
+web01 ansible_host=192.168.56.31 ansible_ssh_private_key_file=.vagrant/machines/web01/vmware_desktop/private_key
+
+[appsrvgrp]
+app01 ansible_host=192.168.56.32 ansible_ssh_private_key_file=.vagrant/machines/app01/vmware_desktop/private_key
+
+[dbsrvgrp]
+db01 ansible_host=192.168.56.33 ansible_ssh_private_key_file=.vagrant/machines/db01/vmware_desktop/private_key
+
+[all:vars]
+ansible_user=vagrant
+ansible_python_interpreter=/usr/bin/python3

@@ -1,0 +1,4 @@
+---
+db_name: accounts
+db_user: admin
+db_backup_path: /tmp/db_backup.sql
