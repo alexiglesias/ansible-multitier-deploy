@@ -1,0 +1,23 @@
+# Vagrant state (VM metadata + generated SSH private keys)
+.vagrant/
+
+# Real secrets: only the example template is committed
+vars/secrets.yml
+
+# Ansible Vault password files
+.vault_pass
+.vault_pass.txt
+*.vault_pass
+
+# Ansible artifacts
+*.retry
+
+# Build and data artifacts deployed by the playbook
+*.war
+*.sql
+
+# OS / editor noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
