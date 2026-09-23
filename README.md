@@ -1,29 +1,32 @@
-# ansible-multiter-deploy
+# ansible-multitier-deploy
 
-100% local. No cloud account, no Terraform needed (that's Project 08).
+> A 3-VM three-tier Java stack (Nginx → Tomcat → MySQL) configured end to end with Ansible.
+> One playbook takes blank Ubuntu VMs to a working stack using reusable roles, handlers
+> and templates, and re-runs safely with zero changes. Secrets stay out of Git.
+> This project targets Apple Silicon Macs (M1/M2/M3/M4) using VMware Fusion.
 
+[![roles](https://img.shields.io/badge/ansible%20roles-3-brightgreen)](./roles)
+[![vms](https://img.shields.io/badge/VMs-3-blue)](./Vagrantfile)
+[![vagrant](https://img.shields.io/badge/vagrant-2.4%2B-blue)](https://www.vagrantup.com/)
+[![os](https://img.shields.io/badge/os-Ubuntu%2022.04-orange)](https://ubuntu.com/)
+[![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
 ## What's in here
 A three-tier Java web stack (Nginx → Tomcat → MySQL) deployed across three virtual machines on your laptop, fully configured by Ansible. One command, `ansible-playbook site.yml`, takes three blank Ubuntu VMs to a working stack, and running it again changes nothing, because every task is idempotent. Secrets are kept out of Git and can be encrypted with Ansible Vault.
 
- Path | Purpose |
-|---|---|
-| `Vagrantfile` | Creates `web01`, `app01` and `db01` (Ubuntu 22.04 ARM64) on a private network |
-| `ansible.cfg` | Points Ansible at the inventory and enables `sudo` for every task |
-| `inventory/hosts` | Groups the VMs into `websrvgrp`, `appsrvgrp` and `dbsrvgrp` with their SSH keys |
-| `site.yml` | Entry point: applies the roles in dependency order (database → app → web) |
-| `roles/mysql` | Installs MySQL, creates the `accounts` database and app user, opens it to `app01` |
-| `roles/tomcat` | Installs OpenJDK 17 and Tomcat 10 as a `systemd` service under a dedicated user, deploys an optional WAR |
-| `roles/nginx` | Configures Nginx as a reverse proxy to `app01:8080`, with the target IP pulled from the inventory |
-| `vars/secrets.example.yml` | Template for the database passwords (copy it to `vars/secrets.yml`, which is git-ignored) |
-
 ## Requirements
 
-- VMWare Fusion installed
-- Vagrant installed
-- Ansible installed on your **host** machine (`pip install ansible --break-system-packages`
-  or `brew install ansible` / `apt install ansible`)
-- The `community.mysql` collection: `ansible-galaxy collection install community.mysql`
+- **macOS on Apple Silicon** (M1/M2/M3/M4)
+- **VMware Fusion 13+**
+- **Vagrant 2.4+**
+- **`vagrant-vmware-desktop` plugin** + [Vagrant VMware Utility](https://developer.hashicorp.com/vagrant/install/vmware)
+  (install the plugin with `vagrant plugin install vagrant-vmware-desktop`)
+- **Ansible** on the host: `brew install ansible`
+- **`community.mysql` collection**, included with the full `ansible` package; if missing:
+  `ansible-galaxy collection install community.mysql`
+- **~3 GB free RAM** for the VMs
+- *Optional:* `vagrant-hostmanager` plugin, so VMs resolve each other by hostname
+  (`vagrant plugin install vagrant-hostmanager`)
 
 ## Architecture
 ### Request flow (run time)
@@ -73,9 +76,88 @@ flowchart LR
     class P1,P2,P3 play
     linkStyle default stroke:#888780,stroke-width:1.5px
 ```
-## Quick Start
+## Quick start
 
-## Project Layout
+```bash
+# 1. Clone the repo
+git clone https://github.com/alexiglesias/ansible-multitier-deploy.git
+cd ansible-multitier-deploy
+
+# 2. Create your secrets file from the template and set your own passwords
+cp vars/secrets.example.yml vars/secrets.yml
+
+# 3. Bring up the 3 VMs in dependency order (db01 → app01 → web01)
+vagrant up --no-parallel --provider=vmware_desktop
+
+# 4. Verify Ansible can reach every VM (expect SUCCESS / pong from all three)
+ansible all -m ping
+
+# 5. Deploy the full stack
+ansible-playbook site.yml
+
+# 6. Open the application (Nginx → Tomcat landing page)
+open http://192.168.56.31
+```
+
+The first run takes a few minutes while packages and Tomcat are downloaded.
+
+## Idempotency check
+
+Run the playbook a second time:
+
+```bash
+ansible-playbook site.yml
+```
+
+Every task should report `ok` and nothing `changed`, because the desired state
+is already in place. Re-running is always safe:
+
+```
+PLAY RECAP *********************************************************
+app01 : ok=..  changed=0  unreachable=0  failed=0  skipped=..
+db01  : ok=..  changed=0  unreachable=0  failed=0  skipped=..
+web01 : ok=..  changed=0  unreachable=0  failed=0  skipped=..
+```
+
+## Secrets and Ansible Vault
+
+`vars/secrets.yml` is git-ignored, so real passwords never reach the repo.
+To also protect it on disk, encrypt it with Ansible Vault:
+
+```bash
+ansible-vault encrypt vars/secrets.yml     # encrypt
+ansible-playbook site.yml --ask-vault-pass # run with the vault password
+ansible-vault edit vars/secrets.yml        # edit later
+```
+
+To avoid typing the password each time, store it in `.vault_pass` (also git-ignored)
+and run `ansible-playbook site.yml --vault-password-file .vault_pass`.
+
+## Deploying a WAR
+
+By default Tomcat serves its landing page. To deploy your own application:
+
+```bash
+ansible-playbook site.yml -e war_file_path=/path/to/app.war
+```
+
+The `tomcat` role copies it to `webapps/ROOT.war` and restarts Tomcat.
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `ansible all -m ping` fails with a key or permission error | Run `vagrant ssh-config` and check the key paths match `inventory/hosts` |
+| `ping` fails right after `vagrant up` | Vagrant creates each VM's key only after it boots; make sure all three are running (`vagrant status`) |
+
+## Stop / reset
+
+```bash
+vagrant halt              # stop the VMs, keep their state
+vagrant destroy -f        # delete the VMs
+vagrant up --no-parallel  # rebuild from zero, then re-run the playbook
+```
+
 ## Project layout
 
 ```
@@ -105,122 +187,3 @@ ansible-multitier-deploy/
         └── templates/
             └── vprofile.conf.j2 # reverse proxy to app01:8080
 ```
-## Step 1 - Bring up the 3 VMs
-
-```bash
-vagrant up
-```
-
-This reads the `Vagrantfile` and creates `web01` (192.168.56.31), `app01` (192.168.56.32)
-and `db01` (192.168.56.33) on a private VirtualBox network.
-
-## Step 2 - ansible.cfg
-
-Already in place at the project root. It points Ansible at `./inventory/hosts`,
-disables host key checking (fine for throwaway local VMs), sets `remote_user = vagrant`,
-and turns on `become` (sudo) by default so you don't need `-b` on every command.
-
-## Step 3 - Inventory
-
-`inventory/hosts` defines three groups - `[websrvgrp]`, `[appsrvgrp]`, `[dbsrvgrp]` -
-each pointing at the matching VM's IP and Vagrant-generated SSH key.
-
-> Note: Vagrant only creates `.vagrant/machines/<name>/virtualbox/private_key` **after**
-> `vagrant up` has run for that VM, so do Step 1 before Step 4.
-
-## Step 4 - Verify connectivity
-
-```bash
-ansible all -m ping
-```
-
-You should get a `SUCCESS` pong from `web01`, `app01`, and `db01`. If you get a
-permission or key error, double-check the `ansible_ssh_private_key_file` paths in
-`inventory/hosts` match where Vagrant actually put the keys (`vagrant ssh-config`
-will show you).
-
-## Step 5 - Roles
-
-Already written under `roles/`:
-
-- `roles/mysql` - installs MySQL, sets the root password, creates the `accounts`
-  database and an app user, opens it to remote connections.
-- `roles/tomcat` - installs OpenJDK 17, downloads & extracts Tomcat 10, creates a
-  dedicated `tomcat` system user, and runs it as a systemd service.
-- `roles/nginx` - installs Nginx and configures it as a reverse proxy to `app01:8080`.
-
-### Configure secrets
-
-Real credentials are not committed. Create your own from the template:
-
-```bash
-cp vars/secrets.example.yml vars/secrets.yml
-# edit vars/secrets.yml and set your passwords
-```
-
-Optionally encrypt it with Ansible Vault:
-
-```bash
-ansible-vault encrypt vars/secrets.yml
-ansible-playbook site.yml --ask-vault-pass
-```
-
-## Step 6 - site.yml
-
-`site.yml` is the entry point: it applies the `mysql` role to `dbsrvgrp`, `tomcat` to
-`appsrvgrp`, and `nginx` to `websrvgrp`, in that order.
-
-```bash
-ansible-playbook site.yml
-```
-
-The first run will take a few minutes (downloading packages + Tomcat).
-
-## Step 7 - Idempotency check
-
-```bash
-ansible-playbook site.yml
-```
-
-Run it a **second** time. Every task should report `ok` (green) - nothing should show
-as `changed` (yellow), because the desired state is already in place. This is the core
-promise of configuration management: re-running is always safe.
-
-If something does show `changed` on the second run, that's usually a sign a task isn't
-properly idempotent (e.g. a `command`/`shell` task instead of a proper Ansible module) -
-a good thing to debug as part of learning Ansible.
-
-## Step 8 - Encrypt the secrets with Ansible Vault
-
-Right now `vars/secrets.yml` is plaintext - fine for testing, not fine to commit to Git.
-
-```bash
-ansible-vault encrypt vars/secrets.yml
-```
-
-You'll be asked to set a vault password. From then on, run the playbook with:
-
-```bash
-ansible-playbook site.yml --ask-vault-pass
-```
-
-(or store the password in a file and use `--vault-password-file path/to/file`,
-keeping that file itself out of Git via `.gitignore`).
-
-To edit the encrypted file later: `ansible-vault edit vars/secrets.yml`.
-
-## Deliverable checklist
-
-- [x] `inventory/` + `ansible.cfg`
-- [x] `roles/nginx`, `roles/tomcat`, `roles/mysql` - tasks, handlers, templates
-- [x] `site.yml` deploying the full stack from zero
-- [ ] Push this repo to Git/GitHub **after** vault-encrypting `vars/secrets.yml`
-
-## Optional next step
-
-Once `nginx` is up, visit `http://192.168.56.31` from your host browser - you should
-see Nginx's proxy hit Tomcat's default landing page on `app01`. To deploy an actual
-WAR file, set `war_file_path` (e.g. as an extra var: `-e war_file_path=/path/to/app.war`)
-and re-run the playbook.
-
-
