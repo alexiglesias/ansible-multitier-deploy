@@ -1,4 +1,20 @@
 ---
+- name: Prepare all hosts
+  hosts: all
+  become: true
+  tasks:
+    - name: Use HTTPS for Ubuntu package mirrors
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list
+        regexp: 'http://ports\.ubuntu\.com'
+        replace: 'https://ports.ubuntu.com'
+      register: apt_sources
+
+    - name: Discard packages downloaded over HTTP
+      ansible.builtin.command: apt-get clean
+      when: apt_sources.changed
+      changed_when: true
+
 - name: Configure MySQL database server
   hosts: dbsrvgrp
   become: true
