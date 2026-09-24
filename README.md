@@ -187,3 +187,7 @@ ansible-multitier-deploy/
         └── templates/
             └── vprofile.conf.j2 # reverse proxy to app01:8080
 ```
+
+## License
+
+[MIT](./LICENSE)
